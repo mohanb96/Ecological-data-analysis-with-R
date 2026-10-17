@@ -1,0 +1,491 @@
+---
+title: "Day 1: R basics and data cleaning"
+author: "Mohan Bi"
+lang: en
+description: "A guided first R practical for ecology students: select control and drought soil data, check missing values, make a figure, and save a reproducible script."
+output:
+  html_document:
+    self_contained: true
+    theme: null
+    highlight: tango
+    toc: false
+    css: assets/tutorial.css
+    includes:
+      before_body: assets/navigation.html
+      after_body: assets/interaction.html
+---
+
+```{r lesson-options, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results = "hide", message = FALSE,
+                      warning = FALSE, fig.show = "hide", dpi = 144)
+```
+
+<div class="lesson-kicker">Smart Tools · Ecology with R and AI</div>
+
+<div class="lesson-intro">
+Today you will use a real soil dataset to investigate a concrete ecological question. Work through the steps in RStudio, save your commands in a script, and explain your first figure in your own words.
+</div>
+
+<div class="lesson-meta">Beginner level <span>·</span> About 3 hours, including a break <span>·</span> Guided practical</div>
+
+<div class="download-row">
+<a class="download-primary" href="Day1_student_files.zip" download>Download the student files <span aria-hidden="true">↓</span></a>
+<a href="MultiFactor_data.csv" download>Dataset only</a>
+<a href="Day1_starter.R" download>Starter R script</a>
+</div>
+
+<p class="small-note">This page is your guide. Run the R commands in RStudio on your computer. The buttons copy code; they do not run R in this page.</p>
+
+## 0. Our question and today's goal {#purpose}
+
+**Does soil exposed to drought have a different proportion of water-stable aggregates from control soil?**
+
+Soil aggregates are groups of soil particles. Their stability matters for soil structure and its functions. Here we use the proportion of **water-stable aggregates (`WSA`)** as a measurement of aggregate stability. A higher value means a larger proportion remained stable during the measurement. In this dataset, WSA is recorded as a fraction: `0.60` corresponds to `60%`.
+
+We will compare `CT` (control) with `D` (drought applied alone). Other treatments remain in the original dataset for later course days. Today we describe the observations. We will investigate statistical tests and uncertainty on Day 2.
+
+**Before looking at the data:** write one sentence in a comment in your R script. Do you expect drought to increase, decrease, or leave WSA unchanged? Give a possible ecological reason. A prediction can be useful even when the data later disagree with it.
+
+```{r prediction, eval=FALSE, purl=FALSE}
+# My prediction: ...
+# My ecological reason: ...
+```
+
+By the end, you should be able to:
+
+- Import a CSV and explain what its rows and columns represent.
+- Select the observations needed for an ecological question.
+- Identify missing values and document how they affect a particular analysis.
+- Create a figure, describe the pattern, and save a script that runs again.
+
+<details class="plan"><summary>Today's route and suggested timing</summary>
+
+| Part | Main task | Minutes |
+|:---|:---|---:|
+| 1 | Set up your project and script | 15 |
+| 2 | Learn the R building blocks we need | 20 |
+| 3 | Import and inspect the soil data | 20 |
+| 4 | Select and combine treatment groups | 25 |
+| 5 | Check types and missing values | 25 |
+| Break | Pause before making the figure | 15 |
+| 6 | Plot and describe control versus drought | 25 |
+| 7 | Save the results and rerun your script | 20 |
+| 8 | Complete the final checkpoint | 15 |
+| | **Total** | **180** |
+
+The optional sections are for students who finish the core tasks early. You do not need to memorize every command.
+
+</details>
+
+## 1. Set up a place for your work {#setup}
+
+**Purpose:** keep your data, code, and outputs together so that you can repeat your work.
+
+1. Download and unzip **the student files** above. Open the extracted folder, not the ZIP file.
+2. Double-click `ABV_Day1.Rproj` to open the folder as an RStudio Project. If your computer asks, choose RStudio.
+3. Open `Day1_starter.R`. Write your name and prediction at the top, then save it.
+4. Check that `MultiFactor_data.csv` is in the same folder as the project and script.
+
+Use the **script editor** to keep your commands. To run a line or selected lines, use **Ctrl + Enter** on Windows/Linux or **Cmd + Enter** on macOS. The **Console** shows the result; the **Environment** lists objects you create; **Plots** shows figures.
+
+```{r project-check}
+getwd()
+list.files()
+file.exists("MultiFactor_data.csv")
+```
+
+**Do:** run the three commands from your script. Find the dataset in the file list.
+
+<details class="answer"><summary>Check: is my setup ready?</summary>
+
+`file.exists("MultiFactor_data.csv")` should return `TRUE`. The exact path printed by `getwd()` depends on your computer. If the check returns `FALSE`, open the project inside the extracted folder and check the filename. Do not change the code to somebody else's absolute path.
+
+</details>
+
+We will use base R for importing and preparing data, and `ggplot2` for the figure. If `ggplot2` is not installed, run this **once in the Console**. Installation requires an internet connection and may take a few minutes. Ask for help if it fails.
+
+```{r installation, eval=FALSE, purl=FALSE}
+install.packages("ggplot2")
+```
+
+Load it each time you start a fresh R session:
+
+```{r load-package}
+library(ggplot2)
+```
+
+<label class="step-check"><input type="checkbox" data-step="setup"> My project is open, the data file is found, and my script is saved.</label>
+
+## 2. Learn the R building blocks we need {#basics}
+
+**Purpose:** understand a small set of commands before using them on the soil data.
+
+An **object** stores something under a name. The assignment operator `<-` means “store the value on the right under the name on the left.” A **function** performs an operation, and its **arguments** provide inputs or options.
+
+```{r building-blocks}
+sample_count <- 4
+sample_count
+
+# A vector is a collection of values. These are invented practice values.
+practice_wsa <- c(0.40, 0.50, 0.60, 0.70)
+mean(practice_wsa)
+length(practice_wsa)
+```
+
+**Do:** before running `mean(practice_wsa)`, calculate or predict its output. Then create a new vector called `my_wsa` with three invented WSA values and calculate its mean. Keep the values between 0 and 1.
+
+<details class="answer"><summary>Check your first results</summary>
+
+The mean of `practice_wsa` is `0.55`, and its length is `4`. Your own vector will have a different mean, but `length(my_wsa)` should return `3`. If R prints `object ... not found`, first check that you ran the assignment and used the same capitalization.
+
+</details>
+
+R can also ask whether a condition is true:
+
+```{r logical-values}
+practice_wsa > 0.50
+practice_wsa[practice_wsa > 0.50]
+```
+
+**Do:** change `>` to `>=`. Explain which extra observation is included. In R, `==` asks whether values are equal; `<-` assigns a value. Text, such as a treatment name, goes inside straight quotes: `"CT"`.
+
+<details class="answer"><summary>Check: what do the square brackets do?</summary>
+
+`practice_wsa > 0.50` gives `FALSE FALSE TRUE TRUE`. Square brackets use those answers to keep `0.60` and `0.70`. With `>=`, `0.50` is included too. Later we will use the same idea to select treatment rows.
+
+</details>
+
+**Useful habit:** write a short comment beginning with `#` above a block of commands to explain its purpose. Use `?mean` to open help for a function.
+
+<label class="step-check"><input type="checkbox" data-step="basics"> I can create an object, call a function, and explain a logical comparison.</label>
+
+## 3. Import and inspect the soil dataset {#inspect}
+
+**Purpose:** understand what you loaded before doing calculations.
+
+```{r import-data}
+soil_data <- read.csv("MultiFactor_data.csv")
+
+head(soil_data)
+dim(soil_data)
+names(soil_data)
+str(soil_data)
+```
+
+`soil_data` is a **data frame**: rows are observations, and columns are variables measured or recorded for them. Here a row records a soil experimental unit. Multiple measurements in a row describe that same unit; they are not additional independent replicates.
+
+Focus on these columns today:
+
+| Column | Meaning | What to notice |
+|:---|:---|:---|
+| `remark` | Treatment label | `CT` = control; `D` = drought alone |
+| `WSA` | Proportion of water-stable aggregates | Fraction between 0 and 1; our main response |
+| `Decom` | Litter decomposition measurement | Proportional litter mass loss during incubation |
+| `PH` | Soil pH | A numerical soil property |
+| `Lv` | Number of applied global change factors | `0` = control; `1` = one factor |
+| `D` | Indicator for whether drought is present | `1` also occurs in combinations with other factors |
+
+The column names are case-sensitive: use `PH`, not `pH`. The leading `X` column is an exported index; it is not a soil property. The file contains other factor indicators and enzyme measurements that we will use later.
+
+```{r inspect-response}
+summary(soil_data$WSA)
+unique(soil_data$remark)
+```
+
+`$` extracts a column by name. For example, `soil_data$WSA` is the vector of WSA measurements inside the data frame.
+
+**Do:** record the number of rows and columns in a comment. Explain `soil_data$WSA` to your neighbour, then inspect `soil_data$PH` using `summary()`.
+
+<details class="answer"><summary>Check: what should I have loaded?</summary>
+
+The supplied course file has **353 rows and 23 columns**. `head()` displays the first six rows by default; it does not mean there are only six observations. `str()` reports the structure and types of the columns. `summary()` reports numerical summaries and, when present, the number of missing values.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="inspect"> I can explain a row, a column, and the response variable for our question.</label>
+
+## 4. Select and combine the groups we need {#subset}
+
+**Purpose:** make a dataset that matches the control–drought question.
+
+```{r select-groups}
+control_data <- soil_data[soil_data$remark == "CT", ]
+drought_data <- soil_data[soil_data$remark == "D", ]
+
+nrow(control_data)
+nrow(drought_data)
+```
+
+Read the first line as: “From `soil_data`, keep rows whose `remark` equals `CT`, and keep all columns.” Inside `[rows, columns]`, the comma separates the two choices. Leaving the column position empty keeps every column.
+
+**Do:** explain why we selected `remark == "D"` rather than `D == 1`. Check your answer using the data dictionary above.
+
+<details class="answer"><summary>Check the selection and sample sizes</summary>
+
+You should have **20 control rows and 7 drought-only rows** in this course file. `D == 1` would also include rows where drought was combined with other factors. That would answer a different question. Use the observed sample sizes in the supplied file; do not assume equal group sizes.
+
+</details>
+
+Combine the selected rows, then retain the columns needed for today's work:
+
+```{r combine-groups}
+day1_data <- rbind(control_data, drought_data)
+day1_data <- day1_data[, c("remark", "WSA", "Decom", "PH")]
+
+table(day1_data$remark)
+nrow(day1_data)
+names(day1_data)
+```
+
+`rbind()` stacks rows from data frames with matching columns. It does not calculate group averages. We select columns by name so that the code stays readable if their order changes.
+
+**Do:** check that only `CT` and `D` remain. In a comment, explain why there are 27 rows rather than 353. The original `soil_data` object has not been overwritten.
+
+<details class="answer"><summary>Optional: the same selection using dplyr</summary>
+
+Only try this after you finish the main exercise. It is an alternative route to the same selected rows, not an extra required step. It needs the `dplyr` package.
+
+```{r dplyr-alternative, eval=FALSE, purl=FALSE}
+library(dplyr)
+day1_alternative <- soil_data %>%
+  filter(remark %in% c("CT", "D")) %>%
+  select(remark, WSA, Decom, PH)
+```
+
+The pipe `%>%` passes the result of one operation into the next. Keep using the main `day1_data` object in the remaining steps.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="subset"> My selected dataset contains 20 control and 7 drought observations.</label>
+
+## 5. Check data types and missing values {#clean}
+
+**Purpose:** make explicit decisions about the variables used in our question.
+
+### 5.1 Identify the variable types
+
+`remark` identifies categories, while `WSA` contains numerical measurements. A **factor** is R's way of representing categories. Set the order explicitly so that control appears before drought in the figure:
+
+```{r treatment-type}
+day1_data$remark <- factor(day1_data$remark, levels = c("CT", "D"))
+str(day1_data)
+```
+
+**Do:** identify the categorical column and the numerical response in the output. Explain why calculating a mean of the treatment names would not make sense.
+
+### 5.2 Count missing values before making a decision
+
+`NA` means a value is missing or unavailable. It does not mean zero.
+
+```{r count-missing}
+sum(is.na(day1_data$WSA))
+sum(is.na(soil_data$WSA))
+```
+
+**Do:** compare the selected dataset with the full dataset. Do both have missing WSA measurements?
+
+<details class="answer"><summary>Check the missing-value counts</summary>
+
+There are **0 missing WSA values in the control–drought subset** and **6 in the full dataset**. We will still document a response-specific decision, so that the workflow also works when another treatment or response has missing measurements.
+
+</details>
+
+### 5.3 See what a missing value does
+
+This next vector is an **invented teaching example**, not a modification of the real soil data:
+
+```{r missing-example}
+practice_missing <- c(0.50, NA, 0.70)
+mean(practice_missing)
+mean(practice_missing, na.rm = TRUE)
+sum(!is.na(practice_missing))
+```
+
+**Do:** explain why the first mean is `NA`. How many measured observations support the second mean?
+
+<details class="answer"><summary>Check: does na.rm fill in the missing value?</summary>
+
+The first calculation returns `NA`. With `na.rm = TRUE`, R calculates the mean of the **two observed values**, giving `0.60`. It does not fill in the missing value or recover a lost measurement. Check why data are missing and report the number used in your analysis.
+
+</details>
+
+### 5.4 Prepare a dataset for the WSA figure
+
+```{r prepare-wsa}
+day1_wsa <- day1_data[!is.na(day1_data$WSA), ]
+
+nrow(day1_data) - nrow(day1_wsa)
+table(day1_wsa$remark)
+```
+
+`!` means “not.” This keeps rows where WSA is observed, while keeping all columns. For today's selected groups, no rows are removed. A row with a missing WSA value would be unavailable for this WSA comparison; it could still be useful for a different response. Keep the original data and document your decision.
+
+**A cleaning decision to discuss:** the following commands count rows retained under two different rules. They do not overwrite the data.
+
+```{r compare-missing-rules}
+sum(complete.cases(soil_data))
+sum(!is.na(soil_data$WSA))
+```
+
+<details class="answer"><summary>Check: why do the rules retain different numbers?</summary>
+
+Complete cases across **every column** retain **255 rows**. Requiring an observed **WSA only** retains **347 rows**. An unrelated missing enzyme measurement need not exclude a row from a WSA-only description. The appropriate rule depends on the variables and design of the analysis.
+
+We will not automatically replace missing values with a mean, median, or zero. Likewise, an unusual observation is a reason to investigate the measurement and context, not an automatic reason to delete it.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="clean"> I can explain NA, count observed values, and describe the decision used for this WSA comparison.</label>
+
+<p class="break-note">Take a 15-minute break here. Save your script before you leave.</p>
+
+## 6. Make your first ecological figure {#figure}
+
+**Purpose:** see the group pattern and the variation among individual observations.
+
+First calculate simple descriptive summaries:
+
+```{r group-summary}
+mean_control <- mean(day1_wsa$WSA[day1_wsa$remark == "CT"])
+mean_drought <- mean(day1_wsa$WSA[day1_wsa$remark == "D"])
+
+mean_control
+mean_drought
+mean_drought - mean_control
+```
+
+**Do:** describe which group has the higher average. Explain the direction of the last calculation: it is **drought minus control**.
+
+Use this plotting template. You do not need to memorize it. Each point represents one selected soil observation. Horizontal jitter separates overlapping points; `height = 0` keeps the measured WSA values unchanged.
+
+```{r make-figure}
+set.seed(1)
+wsa_plot <- ggplot(day1_wsa, aes(x = remark, y = WSA)) +
+  geom_jitter(width = 0.08, height = 0,
+              size = 2.8, alpha = 0.8, colour = "#24624b") +
+  scale_x_discrete(labels = c(CT = "Control", D = "Drought")) +
+  labs(x = "Treatment",
+       y = "Water-stable aggregates (proportion)",
+       title = "Soil aggregate stability: control and drought") +
+  theme_classic(base_size = 12)
+
+wsa_plot
+```
+
+**Do:** run the code, find the figure in RStudio's Plots pane, and change its title. Then write two or three sentences describing:
+
+1. The direction of the difference between the groups.
+2. The variation among observations within each group and any overlap.
+3. How the observations compare with your initial prediction.
+
+Use descriptive wording such as “In the supplied data…” and “The average was higher/lower…”. A visual difference alone does not establish statistical significance or the mechanism causing the pattern.
+
+<details class="answer"><summary>Compare with a reference figure and numerical checks</summary>
+
+```{r reference-figure, echo=FALSE, fig.show='asis', fig.width=7.2, fig.height=4.5, fig.alt='Individual water-stable aggregate proportions for 20 control and 7 drought soil observations. Drought observations have a lower average and the two groups overlap.', purl=FALSE}
+wsa_plot
+```
+
+For the supplied file, the mean WSA is approximately **0.606 for control** and **0.462 for drought**. Drought minus control is approximately **−0.144** in proportion units, equivalent to **−14.4 percentage points**. This is a descriptive difference, not a relative percentage change. There is variation within both groups and some overlap.
+
+Your figure's title can differ. Check that the axes, treatment selection, and number of observations match. On Day 2, we will evaluate the difference and its uncertainty more formally.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="figure"> I have a labelled figure and a descriptive interpretation linked to my prediction.</label>
+
+## 7. Save your work and check that it runs again {#save}
+
+**Purpose:** leave a clear record that you or another student can reproduce.
+
+Create an output folder and export the selected WSA dataset and figure:
+
+```{r export-results}
+dir.create("outputs", showWarnings = FALSE)
+
+write.csv(day1_wsa, "outputs/Day1_CT_D_WSA.csv", row.names = FALSE)
+ggsave("outputs/Day1_CT_D_WSA.png", plot = wsa_plot,
+       width = 7, height = 4.5, dpi = 300)
+
+list.files("outputs")
+```
+
+**Do:** open the `outputs` folder and inspect both files. Save your script as `Day1_yourname.R` inside the project folder. At its end, add your prediction, the missing-value decision, and your interpretation as comments.
+
+Now restart R using **Session → Restart R**. Run your script from its beginning. Restarting removes the current session's objects; your saved files remain. If something works only before restarting, check whether the script is missing an earlier command.
+
+<details class="answer"><summary>Check: what should be in my folder?</summary>
+
+- The original `MultiFactor_data.csv`, unchanged.
+- Your saved `Day1_yourname.R` script.
+- `outputs/Day1_CT_D_WSA.csv` with **27 rows** and the selected columns.
+- `outputs/Day1_CT_D_WSA.png`, showing your figure.
+
+A CSV does not preserve R's factor type. If you later read the exported CSV into R, set the treatment order again if needed.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="save"> My script runs from a fresh session and creates both output files.</label>
+
+## 8. Show what you can do {#finish}
+
+**Core checkpoint · everyone**
+
+Without copying an explanation from this page or an AI tool, explain to a partner or write in your script:
+
+1. What does one point in your figure represent?
+2. Why did we use `remark == "D"` instead of `D == 1`?
+3. What does `na.rm = TRUE` do, and what does it not do?
+4. What can you describe from today's figure, and what still needs investigation?
+
+Then adapt **one** command yourself: inspect another response, calculate a median instead of a mean, or change a plot label. Explain what you changed and why. Show your figure and script to the instructor or your partner.
+
+**Extension · if you finish early**
+
+Choose one task. Keep your original control–drought work intact.
+
+- **Another response:** adapt the selection and figure for `PH`. Use an appropriate y-axis label and check missingness for `PH` before plotting. Compare the descriptive pattern with WSA.
+- **Another treatment:** compare `CT` with salinity alone (`remark == "S"`). Check the group sizes and missing WSA values again. Use new object and output names.
+- **A second syntax:** try the optional `dplyr` example in Part 4 and check whether it selects the same rows.
+
+<details class="answer"><summary>Use AI as an explanation assistant</summary>
+
+Try your own explanation first. Then use this prompt with a course-approved tool:
+
+> I am learning R using soil data. Explain each part of `control_data <- soil_data[soil_data$remark == "CT", ]`. Then give me a similar filtering exercise without its answer. Do not rewrite the whole analysis.
+
+Run the command yourself, inspect the output, and check the explanation against your data. If an answer is unclear, ask about one part, such as `$`, `==`, or the comma. Keep a short note of what AI helped with and how you checked it. Use only course-approved data in your prompts.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="finish"> I can explain my workflow and adapt a command without a worked solution.</label>
+
+## Help when something goes wrong {#help}
+
+| What you see | First thing to check |
+|:---|:---|
+| `cannot open file` or `No such file` | Is the project open? Does `file.exists("MultiFactor_data.csv")` return `TRUE`? |
+| `object ... not found` | Did you run the earlier assignment? Are spelling and capitalization identical? |
+| `could not find function` | Is the function name correct? If it is from a package, did you run `library(...)`? |
+| `there is no package called ...` | Install the package once, then load it. Ask for help if installation fails. |
+| The Console shows `+` instead of `>` | A quote, bracket, or parenthesis may be unfinished. Press Esc, then inspect the command. |
+| A calculation returns `NA` | Count missing values in the variables used; decide how the analysis should handle them. |
+| The plot has no points | Check `nrow()` and `table()` on your selected dataset before changing the plot code. |
+
+Errors are normal. Read the message, check the smallest relevant block, and ask for help with your code and the exact message.
+
+## Reference and downloads {#resources}
+
+The course dataset is provided by Mohan Bi. For the research context and measurement methods, see [Bi et al. (2024), *Number and dissimilarity of global change factors influences soil properties and functions*](https://doi.org/10.1038/s41467-024-52511-2). The counts and reference results on this page refer specifically to the supplied **course CSV**.
+
+Useful references: [RStudio Projects](https://docs.posit.co/ide/user/ide/get-started/), [R data import](https://stat.ethz.ch/R-manual/R-devel/library/utils/html/read.table.html), and [ggplot2 documentation](https://ggplot2.tidyverse.org/).
+
+<details class="answer"><summary>Download a complete reference script after finishing</summary>
+
+[Download `Day1_complete.R`](Day1_complete.R). Compare it with your own script only after attempting the core tasks. Different correct scripts are possible.
+
+</details>
+
+[Editable tutorial source and styling](Day1_tutorial_source.zip) · [Student files](Day1_student_files.zip) · <button class="print-inline" type="button" data-print>Print or save this page as PDF</button>
+
+<p class="lesson-end">Next: Day 2 uses the same control–drought comparison to explore hypothesis testing, effect sizes, and uncertainty.</p>
