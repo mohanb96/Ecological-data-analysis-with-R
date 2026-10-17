@@ -1,0 +1,615 @@
+---
+title: "Day 2: Effect sizes, uncertainty and hypothesis tests"
+author: "Mohan Bi"
+lang: en
+description: "An ecology practical with a whole-class R refresher, followed by a guided control–drought comparison using a mean difference, a confidence interval, and Welch's t-test."
+output:
+  html_document:
+    self_contained: true
+    theme: null
+    highlight: tango
+    toc: false
+    css: assets/tutorial.css
+    includes:
+      before_body: assets/navigation.html
+      after_body: assets/interaction.html
+---
+
+```{r lesson-options, include=FALSE, purl=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results = "hide", message = FALSE,
+                      warning = FALSE, fig.show = "hide", dpi = 144)
+```
+
+<div class="lesson-kicker">Smart Tools · Ecology with R and AI</div>
+
+<div class="lesson-intro">
+On Day 1, you described a pattern in soil data. Today you will estimate the size of that difference, examine its uncertainty, and explain a hypothesis test. Begin with a short R refresher together with your instructor.
+</div>
+
+<div class="lesson-meta">Beginner level <span>·</span> About 3 hours, including a break <span>·</span> Builds on Day 1</div>
+
+<div class="download-row">
+<a class="download-primary" href="Day2_student_files.zip" download>Download the student files <span aria-hidden="true">↓</span></a>
+<a href="MultiFactor_data.csv" download>Dataset only</a>
+<a href="Day2_starter.R" download>Starter R script</a>
+</div>
+
+<p class="small-note">Run the commands in RStudio and save them in your script. Code-copy buttons do not run R in this page. The refresher can be answered aloud before you open R.</p>
+
+## 0. Together first: yesterday's R commands {#refresher}
+
+**Whole class · 15 minutes.** For each question, think quietly for a moment, explain your answer to a neighbour, and then discuss it with the class. Your instructor can reveal the answer after you have explained your reasoning. These questions use commands from [Day 1](https://mohanb96.github.io/Ecological-data-analysis-with-R/day1_v2/).
+
+For Questions 2, 3 and 6, imagine that `soil_data` already contains the course CSV. You will import it yourself in Part 2.
+
+<div class="refresher-toolbar" role="group" aria-label="Whole-class refresher controls">
+<button type="button" id="classroom-start">Start classroom view</button>
+<span id="classroom-counter" role="status" aria-live="polite">6 questions · discuss before revealing</span>
+<div id="classroom-controls" hidden>
+<button type="button" id="classroom-previous">Previous</button>
+<button type="button" id="classroom-reveal">Reveal answer</button>
+<button type="button" id="classroom-next">Next question</button>
+</div>
+</div>
+
+<div class="refresher-question" data-question="1">
+
+### Question 1 · An object and a calculation
+
+Predict the results of the last two commands. What does `<-` do? What does `c()` do?
+
+```{r refresh-vector, eval=FALSE, purl=FALSE}
+wsa_example <- c(0.40, 0.50, 0.60, 0.70)
+mean(wsa_example)
+length(wsa_example)
+```
+
+<details class="answer"><summary>Reveal answer: objects and vectors</summary>
+
+`<-` stores the vector under the name `wsa_example`. `c()` combines the values into a vector. The mean is `0.55`, and the length is `4`. These are invented practice values, not observations from the soil dataset.
+
+**Follow-up:** which part is the function name, and which part supplies its input?
+
+</details>
+</div>
+
+<div class="refresher-question" data-question="2">
+
+### Question 2 · A column or a whole dataset?
+
+Explain the difference between these commands. Which one extracts the response measurements? What do the two numbers from `dim()` represent?
+
+```{r refresh-columns, eval=FALSE, purl=FALSE}
+soil_data$WSA
+dim(soil_data)
+```
+
+<details class="answer"><summary>Reveal answer: columns and dimensions</summary>
+
+`$WSA` extracts the WSA column as a vector. `dim(soil_data)` gives the number of rows, then the number of columns. For the supplied file these are `353` and `23`. A row records a soil experimental unit; different measurements in its columns do not create extra independent replicates.
+
+</details>
+</div>
+
+<div class="refresher-question" data-question="3">
+
+### Question 3 · Which rows are selected?
+
+Read this command in words. What does `==` mean, and why is there a comma before the closing bracket? Would `soil_data$D == 1` select the same rows?
+
+```{r refresh-filter, eval=FALSE, purl=FALSE}
+drought_data <- soil_data[soil_data$remark == "D", ]
+```
+
+<details class="answer"><summary>Reveal answer: selecting drought alone</summary>
+
+Keep the rows whose treatment label equals `"D"`, keep all columns, and store the result as `drought_data`. In `[rows, columns]`, the empty position after the comma means “all columns.” `==` compares values; `<-` assigns an object.
+
+`remark == "D"` selects drought alone. The indicator `D == 1` also selects combinations containing drought and other factors. That would change our ecological comparison.
+
+</details>
+</div>
+
+<div class="refresher-question" data-question="4">
+
+### Question 4 · Is a missing observation a zero?
+
+Predict both results. How many observed values support the second calculation?
+
+```{r refresh-missing, eval=FALSE, purl=FALSE}
+practice <- c(0.50, NA, 0.70)
+mean(practice)
+mean(practice, na.rm = TRUE)
+```
+
+<details class="answer"><summary>Reveal answer: missing values</summary>
+
+The first result is `NA`. The second is `0.60`, calculated from **two** observed values. `na.rm = TRUE` excludes missing values from that calculation; it does not replace them with zero or recover the missing measurements.
+
+</details>
+</div>
+
+<div class="refresher-question" data-question="5">
+
+### Question 5 · Install or load?
+
+Which command installs a package on your computer, and which loads it in a new R session? Must you install it every time?
+
+```{r refresh-packages, eval=FALSE, purl=FALSE}
+install.packages("ggplot2")
+library(ggplot2)
+```
+
+<details class="answer"><summary>Reveal answer: packages</summary>
+
+`install.packages()` installs the package and normally needs an internet connection. `library()` loads an installed package into the current session. You normally install once for your R installation and load it in each fresh session where you need it.
+
+</details>
+</div>
+
+<div class="refresher-question" data-question="6">
+
+### Question 6 · Spot the small error
+
+The data were imported as `soil_data`. Why might this command return “object not found”? Correct it. Where should you save the corrected command so it runs again tomorrow?
+
+```{r refresh-debugging, eval=FALSE, purl=FALSE}
+summary(Soil_data$WSA)
+```
+
+<details class="answer"><summary>Reveal answer: names and a reproducible script</summary>
+
+R is case-sensitive. `Soil_data` and `soil_data` are different names. Use `summary(soil_data$WSA)` and save it in your R script. A script records the commands; objects currently visible in the Environment alone do not record a complete workflow.
+
+</details>
+</div>
+
+**Before moving on:** name one command you can explain more clearly now. Ask about anything that is still uncertain; this refresher is a chance to practise together.
+
+<label class="step-check"><input type="checkbox" data-step="refresher"> I participated in the refresher and checked my explanations.</label>
+
+## 1. Connect our question to the experiment {#question}
+
+**Purpose:** decide what we are comparing before running a test.
+
+Our question continues from Day 1:
+
+**How much does mean water-stable aggregate proportion differ between drought and control soil, and how uncertain is that estimate?**
+
+`WSA` is the proportion of water-stable aggregates, recorded from 0 to 1. A value of `0.60` corresponds to `60%`. We will keep the contrast in the same direction throughout:
+
+**Mean difference = mean under drought − mean under control.**
+
+**Do together:** identify the response, treatment groups, experimental unit, and role of the control. Explain why several measurements from one experimental unit would not automatically be independent replicates. Independence comes from the experimental design; an R command cannot establish it.
+
+Write your ecological prediction and a possible reason as comments in your script. For our planned **two-sided** test:
+
+- **H₀:** the population mean WSA is the same in the two groups.
+- **H₁:** the population means differ.
+
+A directional ecological prediction can accompany this two-sided test. We keep the two-sided choice for this exercise rather than selecting a direction after seeing the results. Today is a guided learning analysis of data you have already explored.
+
+<details class="plan"><summary>Today's route and suggested timing</summary>
+
+| Part | Activity | Minutes |
+|:---|:---|---:|
+| 0 | Whole-class R refresher | 15 |
+| 1 | Ecological question and experimental design | 15 |
+| 2 | Recreate the Day 1 comparison | 15 |
+| 3 | Estimate the mean difference | 20 |
+| 4 | Consider the design and inspect the groups | 15 |
+| 5 | Welch test and confidence interval | 25 |
+| Break | Save your script and pause | 15 |
+| 6 | Interpret the p-value and communicate the result | 20 |
+| 7 | Adapt the analysis to soil pH | 20 |
+| 8 | Save, rerun, and complete the exit questions | 20 |
+| | **Total** | **180** |
+
+Your required outputs are a script that runs from the beginning, a labelled WSA figure, a table of results, and a short ecological interpretation. Bootstrapping is an optional preview at the end; writing loops or functions is not required today.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="question"> I can identify the experimental unit and state the comparison and hypotheses.</label>
+
+## 2. Recreate the comparison from Day 1 {#data}
+
+**Purpose:** begin with visible observations and a script that does not depend on yesterday's Environment.
+
+Download and unzip the student files. Open `ABV_Day2.Rproj`, then `Day2_starter.R`. Save your script as `Day2_yourname.R` inside the same folder. The CSV must sit alongside the project file.
+
+If `ggplot2` was installed on Day 1, simply load it. If it is missing, use `install.packages("ggplot2")` once in the Console, then run the following code.
+
+```{r setup-data}
+library(ggplot2)
+file.exists("MultiFactor_data.csv")
+soil_data <- read.csv("MultiFactor_data.csv")
+
+control_data <- soil_data[soil_data$remark == "CT", ]
+drought_data <- soil_data[soil_data$remark == "D", ]
+
+day2_data <- rbind(control_data, drought_data)
+day2_data <- day2_data[, c("remark", "WSA", "PH", "Decom")]
+day2_data$remark <- factor(day2_data$remark, levels = c("CT", "D"))
+
+table(day2_data$remark)
+sum(is.na(day2_data$WSA))
+```
+
+**Do:** explain which commands are familiar from Day 1. Check the selected groups and missing WSA values before continuing.
+
+<details class="answer"><summary>Check: groups and missing values</summary>
+
+The file should be found (`TRUE`). There are **20 control observations**, **7 drought-only observations**, and **0 missing WSA values** in this selection. Record these counts for the course file you are using.
+
+</details>
+
+Prepare the observed WSA values. Keep the unmodified `day2_data` object for the later pH task.
+
+```{r response-vectors}
+control_WSA <- control_data$WSA
+drought_WSA <- drought_data$WSA
+
+control_WSA <- control_WSA[!is.na(control_WSA)]
+drought_WSA <- drought_WSA[!is.na(drought_WSA)]
+wsa_data <- day2_data[!is.na(day2_data$WSA), ]
+```
+
+Recreate the figure. Each point is one selected observation; horizontal jitter separates points without changing their measured vertical values.
+
+```{r raw-figure}
+wsa_plot <- ggplot(wsa_data, aes(x = remark, y = WSA)) +
+  geom_jitter(width = 0.08, height = 0,
+              size = 2.8, alpha = 0.8, colour = "#24624b") +
+  scale_x_discrete(labels = c(CT = "Control", D = "Drought")) +
+  labs(x = "Treatment",
+       y = "Water-stable aggregates (proportion)",
+       title = "Soil aggregate stability: control and drought") +
+  theme_classic(base_size = 12)
+wsa_plot
+```
+
+**Do:** describe the difference between the groups and the variation within each group. Does any overlap mean the group means must be equal? Discuss before moving on.
+
+<details class="answer"><summary>Compare your figure with the reference</summary>
+
+```{r reference-raw-figure, echo=FALSE, fig.show='asis', fig.width=7.2, fig.height=4.5, fig.alt='Individual WSA measurements in control and drought soil. The groups overlap, with a lower average in drought soil.', purl=FALSE}
+set.seed(1)
+wsa_plot
+```
+
+The drought group has a lower average, with variation in both groups and some overlap. Overlap among individual observations does not establish equality of the population means.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="data"> I checked the group sizes and recreated the WSA figure.</label>
+
+## 3. Estimate the size of the difference {#effect}
+
+**Purpose:** give the ecological difference a direction, a magnitude, and units.
+
+```{r mean-difference}
+mean_control <- mean(control_WSA)
+mean_drought <- mean(drought_WSA)
+mean_difference <- mean_drought - mean_control
+
+mean_control
+mean_drought
+mean_difference
+100 * mean_difference
+```
+
+The observed mean difference is an **effect-size estimate**. We can calculate it directly from the data. A confidence interval, which we will obtain next, adds information about its uncertainty.
+
+**Do:** write a sentence explaining the sign and size of your result. What would a positive difference mean? Why did we multiply by 100 in the last command?
+
+<details class="answer"><summary>Check: proportion units and percentage points</summary>
+
+The means are approximately **0.606 for control** and **0.462 for drought**. Drought minus control is **−0.144** in proportion units, equivalent to **−14.4 percentage points**. This describes a lower average under drought in the supplied data.
+
+Multiplying a proportion difference by 100 expresses it in percentage points. A relative percentage change would be a different calculation with a denominator. Always name your units.
+
+</details>
+
+**Question for discussion:** is a difference of this size ecologically important? Explain what additional knowledge about soil functioning or measurement would help you judge that. Statistical significance alone will not answer it.
+
+<label class="step-check"><input type="checkbox" data-step="effect"> I can explain drought minus control, including its sign and units.</label>
+
+## 4. Consider the design and inspect the groups {#checks}
+
+**Purpose:** understand why a method may be appropriate for the question and data.
+
+Today we use **Welch's independent two-sample t-test** to compare population means. It does not require the two group variances or sample sizes to be equal. Its inference still depends on an appropriate design and distributional assumptions; it does not solve dependence, strong skew, or extreme observations.
+
+Use the figure and these summaries to discuss:
+
+```{r inspect-groups}
+length(control_WSA)
+length(drought_WSA)
+summary(control_WSA)
+summary(drought_WSA)
+```
+
+1. Are these measurements from separate experimental units? Are the groups paired, or independent? Check the experimental design with your instructor.
+2. Do any observations look especially unusual, or do the groups look strongly skewed?
+3. Does the small drought sample leave some distributional features difficult to assess?
+
+**Do:** write one sentence about the design and one about the data inspection. Discuss concerns with the instructor before interpreting the test. An unusual observation should prompt investigation, not automatic deletion.
+
+<details class="answer"><summary>Optional instructor-guided check: Q–Q plots</summary>
+
+A Q–Q plot compares the pattern of ordered observations with a normal distribution. Approximately straight patterns are consistent with approximate normality; small samples make the assessment uncertain. Use this supplied template if your instructor discusses it.
+
+```{r optional-qq, eval=FALSE, purl=FALSE}
+par(mfrow = c(1, 2))
+qqnorm(control_WSA, main = "Control")
+qqline(control_WSA)
+qqnorm(drought_WSA, main = "Drought")
+qqline(drought_WSA)
+par(mfrow = c(1, 1))
+```
+
+Neither a visual plot nor a non-significant normality test proves normality. We are not using a Shapiro–Wilk p-value as an automatic switch between statistical tests. If the method is unsuitable, discuss an alternative that matches the design and scientific question.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="checks"> I can explain why independence and the within-group data patterns matter.</label>
+
+## 5. Estimate uncertainty with a confidence interval {#interval}
+
+**Purpose:** place the estimated mean difference alongside its sampling uncertainty.
+
+Run this one test. Drought comes first, so the interval is for **drought minus control**, matching our effect-size calculation.
+
+```{r welch-test}
+test_result <- t.test(drought_WSA, control_WSA,
+                      alternative = "two.sided",
+                      var.equal = FALSE,
+                      conf.level = 0.95)
+test_result
+```
+
+For now, find the **two group means** and the **95% confidence interval** in the output. You can return to the test statistic and degrees of freedom later.
+
+```{r read-interval}
+test_result$estimate
+test_result$conf.int
+```
+
+The group means in `$estimate` are labelled “mean of x” and “mean of y”: here `x` is drought and `y` is control. The confidence interval gives a range of mean differences compatible with the data under the statistical model, and its width indicates precision.
+
+**Do:** write the interval limits and answer: are both limits negative, both positive, or on opposite sides of zero? Does the interval refer to individual soil measurements or to a difference between population means?
+
+<details class="answer"><summary>Check: reading this confidence interval</summary>
+
+The 95% interval is approximately **−0.238 to −0.051** in proportion units, or **−23.8 to −5.1 percentage points**. Both limits are negative, and zero is outside the interval. It estimates a difference between population means, not the range containing 95% of individual observations.
+
+The 95% level describes the method's long-run coverage: under its assumptions, about 95% of intervals made this way in repeated studies would cover the true difference. It is not a guarantee that this particular interval contains the true value, and it does not account for every possible source of bias.
+
+</details>
+
+**Discuss these three examples.** A is our course result; B and C are invented teaching examples. All differences have the same WSA proportion units.
+
+| Example | Estimated difference | 95% confidence interval |
+|:---|---:|:---|
+| A · course result | −0.144 | −0.238 to −0.051 |
+| B · illustrative | −0.144 | −0.360 to 0.072 |
+| C · illustrative | −0.010 | −0.015 to −0.005 |
+
+Which interval includes zero? Which is narrowest? Can two studies have the same estimated difference but different precision? Does an interval excluding zero automatically imply an ecologically important difference?
+
+<details class="answer"><summary>Reveal the interval discussion</summary>
+
+B includes zero and is less precise than A despite having the same point estimate. C has the narrowest interval but a small estimated difference. An interval excluding zero can indicate a well-resolved difference under the model without establishing its ecological importance. An interval including zero does not prove that there is no effect.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="interval"> I can interpret the direction, width, and target of the confidence interval.</label>
+
+<p class="break-note">Take a 15-minute break here. Save your script before you leave.</p>
+
+## 6. Interpret the p-value and answer the question {#interpret}
+
+**Purpose:** combine statistical evidence, effect size, and ecological interpretation.
+
+```{r read-p-value}
+test_result$p.value
+```
+
+For this test, the **p-value** is the probability of a test statistic at least as extreme as the observed one, assuming equal population means and the other test assumptions. It is **not** the probability that H₀ is true, the probability your conclusion is wrong, or the size of the effect.
+
+For this exercise we use the conventional decision threshold `alpha = 0.05`. When `p < 0.05`, we reject H₀ under the test assumptions. When `p >= 0.05`, we fail to reject it; this does not establish equality. Interpret the estimate and interval alongside that decision.
+
+**Do:** write three short sentences using your own output:
+
+1. State which group had the higher mean and by how much, with units.
+2. Report the confidence interval and p-value, naming the test.
+3. Relate the result to your ecological prediction and state one limitation.
+
+<details class="answer"><summary>Check the numerical result and a possible report</summary>
+
+The p-value is approximately **0.007**. A possible report is:
+
+> Mean WSA was lower under drought than in the control group by 0.144 proportion units (14.4 percentage points). The Welch two-sample test gave a 95% confidence interval for drought minus control of −0.238 to −0.051, with p = 0.007. These observations support a lower mean WSA under the drought treatment in this experimental setting; they do not alone identify the mechanism or establish the same response in all soils.
+
+Add your own ecological reasoning. The drought group has only seven observations, so inspection and uncertainty remain relevant even with a p-value below 0.05.
+
+</details>
+
+**Correct these statements together:**
+
+- “p = 0.007 means there is a 0.7% probability that the null hypothesis is true.”
+- “A non-significant result would prove drought has no effect.”
+- “A small p-value means the effect must be large and ecologically important.”
+
+<details class="answer"><summary>Reveal the corrections</summary>
+
+The p-value is calculated under H₀ and the test assumptions; it does not assign H₀ a probability. Failure to reject H₀ can reflect uncertainty and is not proof of no effect. Ecological importance requires the estimated magnitude, its uncertainty, and knowledge of the system, not the p-value alone.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="interpret"> My interpretation includes an effect estimate, uncertainty, a test result, and a limitation.</label>
+
+## 7. Your turn: apply the workflow to soil pH {#apply}
+
+**Purpose:** transfer the reasoning to one new response rather than copying an entire solution.
+
+Use the same control and drought groups, now with **soil pH (`PH`)**. This is the assigned second comparison for practice. Report it whether or not its p-value is below 0.05; do not search through responses and retain only significant results.
+
+1. Write a prediction and an ecological reason before running this analysis.
+2. Extract `PH` from `control_data` and `drought_data` into new objects, `control_PH` and `drought_PH`.
+3. Count missing values in each vector, remove them for this response-specific comparison, and report the remaining group sizes.
+4. Inspect the measurements, then calculate **drought minus control**.
+5. Apply the same instructor-approved Welch workflow and obtain its confidence interval and p-value.
+6. Adapt the figure for pH and write two or three interpretation sentences. Use **pH units**, not WSA proportion units or percentage points.
+
+Keep your WSA objects and outputs intact. Discuss whether the same method is suitable for these measurements; a new response deserves a new inspection.
+
+<details class="answer"><summary>Reference solution: open after attempting the pH task</summary>
+
+```{r ph-solution, purl=FALSE}
+control_PH <- control_data$PH
+drought_PH <- drought_data$PH
+sum(is.na(control_PH))
+sum(is.na(drought_PH))
+
+control_PH <- control_PH[!is.na(control_PH)]
+drought_PH <- drought_PH[!is.na(drought_PH)]
+length(control_PH)
+length(drought_PH)
+
+ph_difference <- mean(drought_PH) - mean(control_PH)
+ph_test <- t.test(drought_PH, control_PH, var.equal = FALSE)
+ph_difference
+ph_test$conf.int
+ph_test$p.value
+
+ph_data <- day2_data[!is.na(day2_data$PH), ]
+ph_plot <- ggplot(ph_data, aes(x = remark, y = PH)) +
+  geom_jitter(width = 0.08, height = 0,
+              size = 2.8, alpha = 0.8, colour = "#24624b") +
+  scale_x_discrete(labels = c(CT = "Control", D = "Drought")) +
+  labs(x = "Treatment", y = "Soil pH",
+       title = "Soil pH: control and drought") +
+  theme_classic(base_size = 12)
+ph_plot
+```
+
+For the supplied file, neither group has missing pH values; there are 20 control and 7 drought observations. The difference is approximately **+0.846 pH units**, with a 95% interval of **+0.603 to +1.089** and **p ≈ 0.0000475**. Explain the positive direction: the drought group has the higher mean pH. Because pH is logarithmic, this difference should not be interpreted as a proportional change in acidity.
+
+These two classroom comparisons practise the workflow. A research analysis of many responses needs a planned strategy for multiple testing, which we will discuss on Day 4.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="apply"> I adapted the workflow to pH and explained the direction and units.</label>
+
+## 8. Save the evidence and check your understanding {#save}
+
+**Purpose:** leave an analysis that can be checked and repeated.
+
+Use this export template to save the WSA results. Identify the object names you have already created. The table records the contrast explicitly, so its sign remains clear later.
+
+```{r export-results}
+dir.create("outputs", showWarnings = FALSE)
+
+wsa_results <- data.frame(
+  response = "WSA",
+  contrast = "Drought minus control",
+  n_control = length(control_WSA),
+  n_drought = length(drought_WSA),
+  mean_control = mean_control,
+  mean_drought = mean_drought,
+  mean_difference = mean_difference,
+  ci_lower = test_result$conf.int[1],
+  ci_upper = test_result$conf.int[2],
+  p_value = test_result$p.value
+)
+
+write.csv(wsa_results, "outputs/Day2_WSA_results.csv", row.names = FALSE)
+write.csv(wsa_data, "outputs/Day2_WSA_data.csv", row.names = FALSE)
+ggsave("outputs/Day2_WSA_figure.png", plot = wsa_plot,
+       width = 7, height = 4.5, dpi = 300)
+```
+
+**Do:** open the results CSV and check its values against your R output. Add your interpretation as comments in your script. Save the script, restart R with **Session → Restart R**, and run from its beginning. Save your pH work under separate output names if you include it.
+
+**Exit questions · answer in your own words:**
+
+1. Why does drought come first in `t.test(drought_WSA, control_WSA)`?
+2. What does the confidence interval estimate?
+3. If an interval includes zero, does that prove there is no effect?
+4. Can an effect be statistically detectable but ecologically small?
+
+<details class="answer"><summary>Check your explanation before finishing</summary>
+
+The argument order keeps our contrast as drought minus control. The interval estimates the population mean difference, not the spread of individual measurements. An interval including zero indicates uncertainty compatible with zero and other values, not proof of equality. Statistical detectability and ecological importance answer different questions.
+
+Your folder should contain a saved script, the original CSV, and three WSA outputs: a one-row results table, a selected dataset with 27 observations, and the figure. Your script should recreate these from a fresh session.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="save"> My script runs from the beginning, saves the WSA outputs, and includes my interpretation.</label>
+
+## Optional preview: what does bootstrapping do? {#bootstrap}
+
+**For students who finish early or an instructor demonstration.** The required analysis is complete. You do not need to write a loop or function today.
+
+Bootstrapping uses repeated samples drawn **with replacement** from the observed data to approximate sampling uncertainty. For this two-group example, we resample within each group and calculate drought minus control each time. This keeps the original group sizes and the chosen contrast.
+
+<details class="answer"><summary>Show the supplied bootstrap demonstration</summary>
+
+Download the [optional demonstration script](Day2_bootstrap_demo.R) into your project folder, then use this supplied function after running the main workflow:
+
+```{r optional-bootstrap-call, eval=FALSE, purl=FALSE}
+source("Day2_bootstrap_demo.R")
+boot_result <- bootstrap_difference(drought_WSA, control_WSA,
+                                    n_resamples = 4000, seed = 3)
+boot_result$estimate
+boot_result$conf.int
+hist(boot_result$differences,
+     xlab = "Drought minus control (WSA proportion)",
+     main = "Bootstrap mean differences")
+```
+
+```{r bootstrap-reference, echo=FALSE, fig.show='asis', fig.width=7.2, fig.height=4.5, fig.alt='Histogram of 4000 bootstrap drought-minus-control mean differences, with the observed estimate and zero marked.', purl=FALSE}
+source("Day2_bootstrap_demo.R", local = TRUE)
+boot_result <- bootstrap_difference(drought_WSA, control_WSA,
+                                    n_resamples = 4000, seed = 3)
+hist(boot_result$differences, breaks = 35, col = "#c5d9c9", border = "white",
+     xlab = "Drought minus control (WSA proportion)",
+     main = "Bootstrap mean differences")
+abline(v = 0, lty = 2, col = "#6b6b6b", lwd = 1.5)
+abline(v = boot_result$estimate, col = "#245e49", lwd = 2)
+legend("topleft", c("Observed difference", "Zero"),
+       col = c("#245e49", "#6b6b6b"), lty = c(1, 2), bty = "n", cex = 0.85)
+```
+
+The solid line marks the observed difference; the dashed line marks zero. More bootstrap resamples reduce simulation noise, but they do not create more independent soil observations. Resampling from only seven drought observations still has limitations. A bootstrap interval need not equal the Welch interval, and a bootstrap tail area is not generally a t-test p-value. We will revisit resampling in the later null-model lesson.
+
+</details>
+
+## Help and references {#help}
+
+| What is confusing? | What to check |
+|:---|:---|
+| My difference has the opposite sign | Check whether you subtracted control from drought and placed drought first in `t.test()`. |
+| A mean is `NA` | Count missing values in that response, then apply your documented response-specific decision. |
+| The selected group is empty | Check `unique(soil_data$remark)`, spelling, capitalization, and straight quotes. |
+| My confidence interval is for the wrong response | Check which two vectors you passed to `t.test()`. WSA and pH need separate objects and units. |
+| `object ... not found` after restarting | Run the script from the top; ensure imports and assignments are saved. |
+| The Console shows `+` | A quote or bracket may be unfinished. Press Esc and inspect the command. |
+
+Keep a short note of any AI assistance: what you asked, what it explained, and how you checked the answer. A useful prompt is: “Explain what this R output estimates and ask me one interpretation question. Do not write my results paragraph.” Use your own explanation for the final checkpoint.
+
+Data context: [Bi et al. (2024), *Number and dissimilarity of global change factors influences soil properties and functions*](https://doi.org/10.1038/s41467-024-52511-2). Numerical checks on this page refer to the supplied course CSV.
+
+Statistical references: [R documentation for `t.test()`](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/t.test.html) and the [ASA statement on p-values](https://www.amstat.org/asa/files/pdfs/p-valuestatement.pdf).
+
+<details class="answer"><summary>Download the complete core script after attempting the tasks</summary>
+
+[Download `Day2_complete.R`](Day2_complete.R). It reproduces the required WSA workflow. The pH task and optional bootstrap are separate so you can attempt them yourself before opening their reference solutions.
+
+</details>
+
+[Editable tutorial and styling](Day2_tutorial_source.zip) · [Student files](Day2_student_files.zip) · <button class="print-inline" type="button" data-print>Print or save this page as PDF</button>
+
+<p class="lesson-end">You can now connect an ecological question to an estimated difference, its uncertainty, and a cautious conclusion.</p>
