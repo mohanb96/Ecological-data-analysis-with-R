@@ -2,8 +2,6 @@
 
 Guided tutorials for biology and ecology bachelor students, developed for **Smart Tools: Ecology with R and AI** at Freie Universität Berlin.
 
-The first four course days connect ecological questions with practical data analysis in R. We begin with soil data and basic R commands, then introduce statistical uncertainty, fungal trait patterns, and linear models. Each course day combines approximately **1 hour of lecture** with **3 hours of guided practice**, including a break. Day 1 assumes no previous R experience.
-
 ## Tutorials: 
 
 | Day | Tutorial | Ecological focus |
