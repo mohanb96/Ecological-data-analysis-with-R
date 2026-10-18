@@ -1,0 +1,8 @@
+column,meaning,scale_or_codes,use_today
+X,Original record identifier,Identifier only; not a response or explanatory variable,Track exclusions
+remark,Treatment label,CT=control; D=drought; H=herbicide; S=salinity; other labels describe other treatments,Select four named treatment groups
+WSA,Water-stable aggregate proportion,Fraction 0-1; multiply differences by 100 for percentage points,Response for ANOVA
+Decom,Proportional tea litter dry mass loss over incubation,Fraction 0-1; not a per-day rate,Response for regression
+Lv,Number of applied global change factors,"Numeric count; required regression selects 2, 5, 8",Predictor for regression
+dissim,Provided factor dissimilarity index,Dimensionless 0-1; study normalisation is within factor-count levels,Optional multiple-regression predictor
+PH,Soil pH,Logarithmic pH scale; no percentage-point conversion,Other measurement; not analysed in required work
