@@ -1,0 +1,386 @@
+---
+title: "Day 3: Fungal traits, PCA and similarity"
+author: "Mohan Bi"
+lang: en
+description: "A two-hour beginner ecology practical: explore five real fungal traits, interpret isolate positions and trait arrows on a PCA, and repeat the workflow with five other traits."
+output:
+  html_document:
+    self_contained: true
+    mathjax: null
+    theme: null
+    highlight: tango
+    toc: false
+    css: assets/tutorial.css
+    includes:
+      before_body: assets/navigation.html
+      after_body: assets/interaction.html
+---
+
+```{r lesson-options, include=FALSE, purl=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results = "hide", message = FALSE,
+                      warning = FALSE, fig.show = "hide", dpi = 144)
+```
+
+<div class="lesson-kicker">Smart Tools · Ecology with R and AI</div>
+
+<div class="lesson-intro">
+Explore five fungal traits together, connect isolate positions to trait arrows on a PCA, then repeat the workflow with five other traits of your choice.
+</div>
+
+<div class="lesson-meta">Beginner level <span>·</span> Within 2 hours, including a short break <span>·</span> Builds on Days 1 and 2</div>
+
+<div class="download-row">
+<a class="download-primary" href="Day3_student_files.zip" download>Download the student files <span aria-hidden="true">↓</span></a>
+<a href="Day3_starter.R" download>Ready-to-run R script</a>
+<a href="Day3_trait_dictionary.csv" download>Trait dictionary</a>
+</div>
+
+<p class="small-note">Extract the ZIP, open ABV_Day3.Rproj and save Day3_starter.R as Day3_yourname.R. The script already contains the analysis, plotting and saving commands. Run it in sections in RStudio and add brief interpretation comments; you do not need to retype the code.</p>
+
+## 1. An example workflow with 5 fungi traits. {#data}
+
+**10 minutes.** The teaching file has **31 rows and 9 columns**: four metadata columns and these five traits.
+
+| Column | Biological meaning |
+|:---|:---|
+| `extension` | Mycelial extension |
+| `melanin` | Melanisation |
+| `enz_cel` | Cellobiohydrolase activity |
+| `spore_abund` | Spore abundance |
+| `hyphal_diam` | Hyphal diameter |
+
+Values use the **supplied course scales**; raw units and the full processing history are not recorded in the CSV. Negative extension/spore values do not mean negative physical growth or counts. Compare relative values and consult the dictionary; do not add raw units or log-transform these processed values.
+
+Run the import section of your script. Only `ggplot2` is needed beyond base R; install it once with `install.packages("ggplot2")` if necessary.
+
+```{r import-real}
+library(ggplot2)
+file.exists("Fungal_traits_day3.csv")
+fungi <- read.csv("Fungal_traits_day3.csv")
+output_dir <- file.path("outputs", "guided")
+
+dim(fungi)
+head(fungi)
+trait_names <- c("extension", "melanin", "enz_cel", "spore_abund", "hyphal_diam")
+trait_data <- fungi[, trait_names]
+str(trait_data)
+summary(trait_data)
+```
+
+### Retain complete records for the selected traits
+
+Use the same row selection for traits and metadata so IDs stay aligned. Check missingness only in the five selected columns.
+
+```{r missing-traits}
+colSums(is.na(trait_data))
+
+keep <- complete.cases(trait_data)
+excluded_ids <- fungi$strainID[!keep]
+excluded_ids
+sum(keep)
+
+fungi_complete <- fungi[keep, ]
+trait_matrix <- fungi_complete[, trait_names]
+rownames(trait_matrix) <- fungi_complete$strainID
+dim(trait_matrix)
+```
+
+**Record:** the retained sample size and excluded isolate IDs.
+
+<details class="answer"><summary>Check</summary>
+
+The analysis retains **28 isolates × 5 traits** and excludes **DF25, DISC and M**. Each of the original four traits has three missing values; hyphal diameter is complete. Exclusion may affect which isolates are represented.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="data"> I recorded the sample size and excluded IDs.</label>
+
+## 2. Put traits on a common scale {#scale}
+
+**5 minutes.** Give each trait the same initial variance weight. `scale()` subtracts the column mean and divides by its sample SD:
+
+**Standardised value = (recorded value − column mean) / column SD.**
+
+A value of `+1` means one SD above the retained-sample mean for that trait. Scaling does not remove outliers or make all traits equally important ecologically.
+
+```{r scale-real}
+trait_scaled <- scale(trait_matrix)
+
+round(colMeans(trait_scaled), 6)
+apply(trait_scaled, 2, sd)
+```
+
+**Check:** all five means are approximately 0 and SDs approximately 1. Keep this one-line reason for scaling as a script comment: “We standardised to prevent differences in numerical scale from dominating the analysis.”
+
+<label class="step-check"><input type="checkbox" data-step="scale"> I checked scaling and can explain why we use it.</label>
+
+## 3. Build a PCA map {#pca}
+
+**15 minutes.** PCA finds axes summarising variation: PC1 captures the most, and PC2 the most remaining variation perpendicular to PC1. With five traits we can have five components; this map displays only two.
+
+```{r run-pca}
+pca_result <- prcomp(trait_scaled, center = FALSE, scale. = FALSE)
+summary(pca_result)
+
+variance_percent <- 100 * pca_result$sdev^2 / sum(pca_result$sdev^2)
+variance_table <- data.frame(
+  PC = paste0("PC", seq_along(variance_percent)),
+  percent = variance_percent
+)
+variance_table
+sum(variance_percent[1:2])
+```
+
+We already scaled the matrix, so `center = FALSE, scale. = FALSE` avoids repeating that step. `$sdev^2` supplies component variances; the recipe converts them to percentages.
+
+**Scores** are isolate coordinates in `pca_result$x`. Run the supplied score and plotting sections; the four labels identify example isolates, while every retained isolate is plotted. `coord_equal()` keeps axis units equal.
+
+```{r pca-scores}
+scores <- data.frame(
+  strainID = fungi_complete$strainID,
+  Species = fungi_complete$Species,
+  PC1 = pca_result$x[, 1],
+  PC2 = pca_result$x[, 2]
+)
+head(scores)
+```
+
+```{r pca-plot}
+label_data <- scores[scores$strainID %in% c("A", "DF56", "C31", "DF36"), ]
+
+pca_plot <- ggplot(scores, aes(x = PC1, y = PC2)) +
+  geom_hline(yintercept = 0, colour = "grey85") +
+  geom_vline(xintercept = 0, colour = "grey85") +
+  geom_point(size = 3, colour = "#245e49", alpha = 0.85) +
+  geom_text(data = label_data, aes(label = strainID),
+            nudge_y = ifelse(label_data$strainID == "DF56", 0.35, 0),
+            vjust = -0.8, size = 3.5) +
+  coord_equal() +
+  labs(
+    x = paste0("PC1 (", round(variance_percent[1], 1), "% of variance)"),
+    y = paste0("PC2 (", round(variance_percent[2], 1), "% of variance)"),
+    title = paste("Similarities among", nrow(scores), "fungal isolates"),
+    subtitle = "PCA of five standardised traits; selected isolate IDs labelled"
+  ) +
+  theme_minimal(base_size = 12)
+pca_plot
+```
+
+**Record:** the percentage shown by PC1 and PC2 together.
+
+<details class="answer"><summary>Check</summary>
+
+PC1 shows **44.8%**, PC2 **20.8%**, together **65.6%**. The other **34.4%** lies in PC3–PC5. Nearby points can therefore differ in traits not fully represented by this map.
+
+```{r reference-pca, echo=FALSE, fig.show='asis', fig.width=7.5, fig.height=5.5, fig.alt='PCA score plot of 28 fungal isolates using five standardised traits. PC1 explains 44.8 percent and PC2 20.8 percent, with four example isolate IDs labelled.', purl=FALSE}
+print(pca_plot)
+```
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="pca"> I made the PCA map and recorded the displayed percentage.</label>
+
+## 4. Add trait arrows {#interpret}
+
+**10 minutes.** **Loadings**, in `pca_result$rotation`, are trait weights on the PC axes. Positive and negative weights indicate directions; they are not p-values or percentages. Extract them and run the supplied arrow recipe.
+
+```{r pca-loadings}
+loadings <- pca_result$rotation[, 1:2]
+round(loadings, 2)
+```
+
+```{r pca-trait-arrows}
+arrow_multiplier <- 2.5
+trait_arrows <- data.frame(
+  trait = rownames(loadings),
+  PC1 = loadings[, 1] * arrow_multiplier,
+  PC2 = loadings[, 2] * arrow_multiplier
+)
+
+pca_plot <- pca_plot +
+  geom_segment(
+    data = trait_arrows,
+    aes(x = 0, y = 0, xend = PC1, yend = PC2),
+    inherit.aes = FALSE,
+    arrow = grid::arrow(length = grid::unit(0.18, "cm")),
+    colour = "#884b24", linewidth = 0.7
+  ) +
+  geom_label(
+    data = trait_arrows,
+    aes(x = PC1 * 1.2, y = PC2 * 1.2, label = trait),
+    inherit.aes = FALSE,
+    colour = "#884b24", fill = "white", size = 3
+  ) +
+  labs(subtitle = "Five standardised traits; arrows show positive trait directions",
+       caption = "Loading arrows multiplied by 2.5 for display; points are isolate scores")
+pca_plot
+```
+
+All loading arrows use the same display multiplier, `2.5`; it does not change the PCA. A point farther **along an arrow's direction** has a higher reconstructed value for that trait in the two-PC approximation. Reversing both scores and arrows on an axis leaves the relationships unchanged.
+
+```{r reference-trait-arrows, echo=FALSE, fig.show='asis', fig.width=8, fig.height=6, fig.alt='PCA of 28 fungal isolate records with five labelled arrows from the origin: extension and spores point towards positive PC1, melanisation and enzyme activity towards negative PC1, and hyphal diameter mainly towards negative PC2.', purl=FALSE}
+print(pca_plot)
+```
+
+### Interpretation of the example
+
+Principal component analysis (PCA) revealed substantial functional trait variation among the **28 fungal isolates**, with the first two principal components explaining **65.6% of the total variance** (PC1: **44.8%**; PC2: **20.8%**). PC1 primarily differentiated isolates associated with higher melanin production and cellulolytic enzyme activity from those associated with greater hyphal extension and spore abundance. PC2 was dominated by hyphal diameter, with spore abundance loading in the opposite direction. The orientations of the trait vectors suggest positive correlations between melanin production and cellulolytic activity, and between hyphal extension and spore abundance.
+
+These vector relationships describe the PC1–PC2 projection, which omits **34.4%** of the trait variation. Arrow angles do not give exact correlations, arrow lengths do not measure ecological importance, and point-to-arrow-tip distances are not trait measurements.
+
+<label class="step-check"><input type="checkbox" data-step="interpret"> I added all five trait arrows to the PCA map.</label>
+
+<div class="break-note">Break · 5 minutes. Save your script.</div>
+
+## 5. One exploratory clustering cut {#cluster}
+
+**10 minutes.** Hierarchical clustering joins similar isolates using distances from **all five scaled traits**. We use Euclidean distance and complete linkage, where the distance between groups is the largest pairwise distance across members. Cut the tree once at `k = 3` and note the group sizes.
+
+```{r cluster-tree, fig.show='asis', fig.width=8, fig.height=4.8, fig.alt='Complete-linkage dendrogram of 28 fungal isolates using five scaled traits, with the three exploratory clusters outlined.'}
+trait_distances <- dist(trait_scaled, method = "euclidean")
+cluster_tree <- hclust(trait_distances, method = "complete")
+groups_k3 <- cutree(cluster_tree, k = 3)
+table(groups_k3)
+
+plot(cluster_tree, labels = fungi_complete$strainID,
+     main = "Fungal similarity in five standardised traits",
+     xlab = "Isolate ID", sub = "Euclidean distance; complete linkage; k = 3",
+     ylab = "Complete-linkage distance", cex = 0.75)
+rect.hclust(cluster_tree, k = 3, border = "#6a8f62")
+```
+
+The guided group sizes are **5, 18 and 5**. Read join heights, not the left-to-right order of labels. This is a similarity tree, not a phylogeny; choosing three clusters does not prove that three natural fungal strategies exist.
+
+The script also calculates mean scaled traits as a quick descriptive summary. No separate group-description exercise is needed.
+
+```{r cluster-profiles}
+cluster_profiles <- aggregate(
+  as.data.frame(trait_scaled),
+  by = list(cluster = factor(groups_k3)),
+  FUN = mean
+)
+cluster_profiles
+```
+
+<label class="step-check"><input type="checkbox" data-step="cluster"> I ran the clustering and noted the three group sizes.</label>
+
+## 6. Your turn: repeat with five other traits {#apply}
+
+**30 minutes.** Choose **five other traits**, with no overlap with the guided five. Use `Fungal_traits_full.csv` from the student ZIP and this documented pool:
+
+| Column | Biological feature |
+|:---|:---|
+| `density` | Mycelial density |
+| `water_cont` | Fungal water content |
+| `hydrop` | Hydrophobicity |
+| `C_cont` | Carbon content |
+| `enz_leu` | Leucine aminopeptidase activity |
+| `enz_pho` | Phosphatase activity |
+| `spore_shape` | Spore shape index |
+| `spore_size` | Spore size |
+
+**Write one sentence explaining your choice.** These columns use supplied course scales; use the dictionary for interpretation.
+
+Save the guided outputs with Step 7, then save a copy of your working script as `Day3_yourname_other_traits.R`. In the copy, replace the import, output folder and trait-selection lines with the block below. Replace all five `???` names before running it. Leave the rest of the analysis and saving code in place.
+
+```{r other-traits-template, eval=FALSE, purl=FALSE}
+fungi <- read.csv("Fungal_traits_full.csv")
+output_dir <- file.path("outputs", "your_five_traits")
+trait_names <- c("???", "???", "???", "???", "???")
+
+guided_traits <- c("extension", "melanin", "enz_cel", "spore_abund", "hyphal_diam")
+eligible_traits <- c("density", "water_cont", "hydrop", "C_cont",
+                     "enz_leu", "enz_pho", "spore_shape", "spore_size")
+stopifnot(length(trait_names) == 5,
+          anyDuplicated(trait_names) == 0,
+          !any(trait_names %in% guided_traits),
+          all(trait_names %in% eligible_traits))
+```
+
+`stopifnot()` stops if the five names do not meet these conditions. Replace the original lines rather than adding a second selection later in the script.
+
+**Repeat the same flow:** inspect missing values and retain complete rows → scale → PCA → five arrows and interpretation → clustering at `k = 3` → save. The supplied plotting code takes trait names and sample size from your new analysis.
+
+Keep just these short notes:
+
+1. Your retained sample size and PC1–PC2 percentage.
+2. A comparison of two isolates (IDs and species labels) using two arrow directions, checked against the recorded traits. Use A and DF56, or choose another pair using `scores`.
+3. One difference from the guided result, or one limitation.
+
+To check the recorded values for your chosen pair, adapt the IDs in this supplied command after running your independent script:
+
+```{r compare-own-isolates, eval=FALSE, purl=FALSE}
+fungi_complete[fungi_complete$strainID %in% c("A", "DF56"),
+               c("strainID", "Species", trait_names)]
+```
+
+Selections including `density` retain 28 isolates; other selections retain 31. Recheck this in your script. If retained IDs change, differences may reflect both trait choice and sample composition. There is no single expected PCA or grouping for this task.
+
+<label class="step-check"><input type="checkbox" data-step="apply"> I repeated the flow with five other traits and added the three short notes.</label>
+
+## 7. Save, rerun and finish {#save}
+
+**10 minutes total across both analyses.** Run the saving section at the end of each script. `output_dir` keeps the guided and independent results in separate folders. The code automatically saves the PCA with arrows, dendrogram and tables; you do not need to write new export commands.
+
+<details class="plan"><summary>Supplied saving code (already in your script)</summary>
+
+```{r save-results}
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+scores_export <- data.frame(
+  strainID = fungi_complete$strainID,
+  Species = fungi_complete$Species,
+  pca_result$x,
+  cluster_k3 = groups_k3
+)
+loadings_export <- data.frame(trait = rownames(loadings), loadings)
+
+write.csv(data.frame(trait = trait_names), file.path(output_dir, "Day3_selected_traits.csv"), row.names = FALSE)
+
+write.csv(scores_export, file.path(output_dir, "Day3_PCA_scores_and_clusters.csv"), row.names = FALSE)
+write.csv(loadings_export, file.path(output_dir, "Day3_PC1_PC2_loadings.csv"), row.names = FALSE)
+write.csv(variance_table, file.path(output_dir, "Day3_variance_explained.csv"), row.names = FALSE)
+write.csv(cluster_profiles, file.path(output_dir, "Day3_cluster_profiles_scaled.csv"), row.names = FALSE)
+write.csv(fungi_complete, file.path(output_dir, "Day3_retained_trait_records.csv"), row.names = FALSE)
+write.csv(data.frame(strainID = excluded_ids), file.path(output_dir, "Day3_excluded_isolates.csv"), row.names = FALSE)
+
+ggsave(file.path(output_dir, "Day3_PCA.png"), plot = pca_plot, width = 7.5, height = 5.5, dpi = 300, bg = "white")
+
+png(file.path(output_dir, "Day3_dendrogram.png"), width = 2400, height = 1500, res = 300)
+plot(cluster_tree, labels = fungi_complete$strainID,
+     main = "Fungal similarity in five standardised traits",
+     xlab = "Isolate ID", sub = "Euclidean distance; complete linkage; k = 3",
+     ylab = "Complete-linkage distance", cex = 0.75)
+rect.hclust(cluster_tree, k = 3, border = "#6a8f62")
+dev.off()
+```
+
+</details>
+
+Save your comments from Steps 1–3 and 6; **no additional report or exit questions** are required. Restart R and run each saved script from the beginning. Keep both scripts and their `outputs` folders.
+
+<label class="step-check"><input type="checkbox" data-step="save"> Both scripts rerun, both output folders are saved, and my short interpretations are included.</label>
+
+## 8. Help and downloads {#help}
+
+<details class="plan"><summary>If something does not run</summary>
+
+- **File not found:** extract the ZIP and open `ABV_Day3.Rproj`; check `getwd()` and `list.files()`.
+- **Object not found:** run the earlier sections in order; R distinguishes uppercase and lowercase.
+- **Missing or constant traits:** use complete rows for the selected five numeric traits and inspect their SDs before scaling.
+- **Different PCA orientation:** axis signs may reverse; the matching scores and arrows should reverse together.
+- **Overlapping labels:** adjust label positions in the supplied plot recipe.
+
+</details>
+
+<div class="download-row">
+<a href="Day3_complete.R" download>Core R script</a>
+<a href="Day3_trait_dictionary.csv" download>Trait dictionary</a>
+<a href="Fungal_traits_full.csv" download>Full course dataset</a>
+<a href="Day3_tutorial_source.zip" download>Editable tutorial source</a>
+<button type="button" class="print-inline" data-print>Print lesson and checks</button>
+</div>
+
+**Data context:** the real teaching file keeps selected columns and all rows from the supplied `Fungal_traits.csv`; no values were imputed. See Camenzind et al. (2024), [*Towards establishing a fungal economics spectrum in soil saprobic fungi*](https://doi.org/10.1038/s41467-024-47705-7), for the trait framework and original study methods. This teaching subset does not reproduce the paper's full analysis.
+
+**R references:** [PCA](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/prcomp.html), [scaling](https://stat.ethz.ch/R-manual/R-devel/library/base/html/scale.html), and [hierarchical clustering](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/hclust.html).
