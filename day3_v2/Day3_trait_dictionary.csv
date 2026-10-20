@@ -1,9 +1,0 @@
-column,role,meaning,scale_in_course_file,interpretation
-strainID,metadata,Original isolate identifier,Text label,Do not include in the numeric PCA matrix
-newID,metadata,Alternative isolate identifier,Text label,Do not include in the numeric PCA matrix
-Phylum,metadata,Taxonomic phylum,Text label,Do not include in the numeric PCA matrix
-Species,metadata,Taxonomic label supplied with the isolate,Text label,Do not include in the numeric PCA matrix
-extension,analysis trait,Mycelial extension,Supplied course values; original raw units and full preprocessing are not recorded in the CSV,Higher values indicate greater extension on the supplied processed scale; negative values are not negative physical growth
-melanin,analysis trait,Melanisation,Supplied course values; original raw units and full preprocessing are not recorded in the CSV,Higher values indicate greater melanisation on the supplied course scale
-enz_cel,analysis trait,Cellobiohydrolase activity,Supplied course values; original raw units and full preprocessing are not recorded in the CSV,Higher values indicate greater measured activity on the supplied course scale
-spore_abund,analysis trait,Spore abundance,Supplied course values; original raw units and full preprocessing are not recorded in the CSV,Higher values indicate greater abundance on the supplied processed scale; negative values are not negative spore counts
