@@ -323,9 +323,7 @@ control_comparisons
 | Herbicide − Control | +0.4 | −10.0 to +10.8 | 0.9996 |
 | Salinity − Control | −13.9 | −23.5 to −4.2 | 0.0022 |
 
-Under the fitted model, drought and salinity have lower mean WSA than control, with intervals excluding zero. The herbicide estimate is close to zero, but its interval still permits differences in either direction that could matter ecologically. A large p-value does not establish equivalence; a suitable equivalence margin and analysis would be needed for that question.
-
-To judge ecological importance, connect aggregate stability to relevant processes such as erosion resistance or water movement, compare the magnitude with natural variation and measurement precision, and consider persistence under field conditions. Statistical significance alone does not answer this.
+Under the fitted model, drought and salinity have lower mean WSA than control, with intervals excluding zero. The herbicide estimate is close to zero.
 
 The drought mean difference matches Day 2. Its interval and p-value differ because today's model pools an error variance across four groups and adjusts a six-pair comparison family; Day 2 used a two-group Welch test. Do not expect a simple numerical conversion between the two methods.
 
