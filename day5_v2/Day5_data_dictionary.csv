@@ -1,0 +1,18 @@
+column,meaning,coding_or_units,role
+Decom,Tea litter decomposition response,Proportional dry mass loss over the 42-day incubation; 0.65 means 65 percent,Continuous response for both regression models
+P,PFAS treatment,0 absent; 1 present,Predictor
+C,Copper treatment,0 absent; 1 present,Predictor
+L,Lithium treatment,0 absent; 1 present,Predictor
+N,Nitrogen deposition treatment,0 absent; 1 present,Predictor
+A,Antibiotic treatment,0 absent; 1 present,Predictor
+I,Insecticide treatment,0 absent; 1 present,Predictor
+SU,Surfactant treatment,0 absent; 1 present,Predictor
+FU,Fungicide treatment,0 absent; 1 present,Predictor
+H,Herbicide treatment,0 absent; 1 present,Predictor
+M,Microplastic treatment,0 absent; 1 present,Predictor
+S,Salinity treatment,0 absent; 1 present,Predictor
+D,Drought treatment,0 absent; 1 present,Predictor
+X,Source record identifier,Not a predictor,Retained in the preparation audit
+remark,Source treatment label,Select CT/1/2/5/8 to keep one copy of the single-factor records,Selection only; not a predictor
+Lv,Number of applied global change factors,Equals the sum of the twelve predictor indicators,Preparation check only; not a predictor
+dissim,Provided factor dissimilarity index,Derived index; excluded from this prediction exercise,Not a predictor

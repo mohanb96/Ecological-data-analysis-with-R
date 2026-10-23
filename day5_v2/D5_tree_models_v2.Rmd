@@ -1,0 +1,446 @@
+---
+title: "Day 5: Read a tree, rank the factors"
+author: "Mohan Bi"
+lang: en
+description: "A two-hour ecology practical: predict soil litter decomposition from twelve 0/1 global change factors with CART, interpret conditional branches, then fit a small random forest and rank permutation importance."
+output:
+  html_document:
+    self_contained: true
+    mathjax: null
+    theme: null
+    highlight: tango
+    toc: false
+    css: assets/tutorial.css
+    includes:
+      before_body: assets/navigation.html
+      after_body: assets/interaction.html
+---
+
+```{r lesson-options, include=FALSE, purl=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results = "hide", message = FALSE,
+                      warning = FALSE, fig.show = "hide", dpi = 144)
+```
+
+<div class="lesson-kicker">Smart Tools · Ecology with R and AI</div>
+
+<div class="lesson-intro">
+Which global change factors help predict soil decomposition, and does a factor's pattern depend on which other factors are present? First, follow the branches of a single regression tree. Then build a small random forest and rank the factors by their contribution to prediction.
+</div>
+
+<div class="lesson-meta">Guided beginner practice <span>·</span> 120 minutes, including a 5-minute break <span>·</span> Builds on Day 4</div>
+
+<div class="download-row">
+<a class="download-primary" href="Day5_student_files.zip" download>Download the student files <span aria-hidden="true">↓</span></a>
+<a href="MultiFactor_data.csv" download>Dataset only</a>
+<a href="Day5_starter.R" download>Starter R script</a>
+</div>
+
+<p class="small-note">Extract the ZIP, open <code>ABV_Day5.Rproj</code>, and save your own copy of the starter script. Follow this page in your browser and run R in RStudio. Copy buttons copy code; they do not run it. Attempt each task before opening its check.</p>
+
+## 0. Our question and setup {#start}
+
+**Together · 10 minutes.** On Day 4 you predicted litter mass loss from the **number** of global change factors. Today we use the **identity** of each factor, recorded in twelve 0/1 columns. Both models use exactly the same response and predictors.
+
+| Role | Today's choice |
+|:---|:---|
+| Response | `Decom`: proportional tea litter dry mass loss during incubation |
+| Predictors | Twelve columns indicating factor absence (0) or presence (1) |
+| First model | CART: **classification and regression trees**, used here for regression |
+| Second model | **Random forest regression**, with 25 trees and 50 importance permutations |
+
+`Decom = 0.65` means **65% of the initial litter mass was lost**. This course uses it as the decomposition response. Keep it numeric: a numeric response makes this a **regression** task even though the predictors are binary.
+
+**By the end, you should be able to:** select the 0/1 predictor matrix; build and plot a regression tree; describe conditional factor patterns along complete paths; fit the guided random forest model; and interpret a permutation-importance ranking.
+
+### Before running the analysis
+
+Install these packages once in the RStudio Console:
+
+```{r install-packages, eval=FALSE, purl=FALSE}
+install.packages(c("rpart", "rpart.plot", "randomForest"))
+```
+
+Then start your script with:
+
+```{r setup}
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+dir.create("outputs", showWarnings = FALSE)
+```
+
+**Predict before looking:** Which factor do you expect to help predict decomposition the most? Write one sentence explaining your ecological reasoning. You can revise it after seeing the model results.
+
+<label class="step-check"><input type="checkbox" data-step="start"> I opened my project, loaded the packages and wrote a prediction.</label>
+
+## 1. Inspect the 0/1 factor matrix {#data}
+
+**Together, then pairs · 15 minutes.** Read the same dataset used on earlier days. Each factor column records whether that treatment was applied.
+
+| Code | Factor | Code | Factor |
+|:---|:---|:---|:---|
+| `P` | PFAS | `SU` | Surfactant |
+| `C` | Copper | `FU` | Fungicide |
+| `L` | Lithium | `H` | Herbicide |
+| `N` | Nitrogen deposition | `M` | Microplastic |
+| `A` | Antibiotic | `S` | Salinity |
+| `I` | Insecticide | `D` | Drought |
+
+### Keep each experimental unit once
+
+The soil dataset contains the single-factor observations twice: once under named factor labels and once under `remark = "1"`. Select the summary labels below to keep **one copy** of those observations, together with controls and multi-factor observations. Do this before splitting the data.
+
+```{r import-check}
+soil_raw <- read.csv("MultiFactor_data.csv")
+factor_names <- c("P", "C", "L", "N", "A", "I", "SU", "FU", "H", "M", "S", "D")
+soil_once <- soil_raw[soil_raw$remark %in% c("CT", "1", "2", "5", "8"), ]
+
+nrow(soil_raw)
+nrow(soil_once)
+head(soil_once[, c("Decom", factor_names)])
+table(as.matrix(soil_once[, factor_names]), useNA = "ifany")
+all(rowSums(soil_once[, factor_names]) == soil_once$Lv)
+
+keep <- complete.cases(soil_once[, c("Decom", factor_names)])
+excluded_ids <- soil_once$X[!keep]
+excluded_ids
+model_data <- soil_once[keep, c("Decom", factor_names)]
+rownames(model_data) <- paste0("record_", soil_once$X[keep])
+dim(model_data)
+```
+
+We remove rows missing the response or a selected predictor.
+
+### Split dataset into training and test sets
+
+The **training dataset** lets the model learn splits and prediction rules. The **test dataset** checks how well those rules predict observations that were not used to build or choose the model.
+
+**Discuss with your partner:** A tree predicts the observations used to train it very accurately. Does this show that it will predict new soil samples accurately? What evidence would you want before trusting it?
+
+<details class="answer"><summary>Check: learning versus evaluating</summary>
+
+If we train on **all observations** and assess the model on those same observations, the evaluation reuses information the model has already seen. A flexible tree can fit accidental patterns as well as the ecological signal: this is **overfitting**. Its training error may be small while its error on new observations is larger.
+
+</details>
+
+For the first CART illustration only, use a fixed random split: split 75% data into training set, 25% data into test set. This results in **189 training observations** and **63 test observations**.
+
+```{r split-data}
+set.seed(505)
+train_rows <- sample(seq_len(nrow(model_data)), size = floor(0.75 * nrow(model_data)))
+train_data <- model_data[train_rows, ]
+test_data <- model_data[-train_rows, ]
+nrow(train_data)
+nrow(test_data)
+```
+
+`set.seed()` makes the random choice repeatable with the same R setup. The minus sign selects rows **outside** `train_rows`.
+
+This split holds out individual microcosms. It assesses prediction for other units from the training set; it does **not** specifically test prediction for entirely unseen combinations, sites or experiments.
+
+<label class="step-check"><input type="checkbox" data-step="data"> I have 252 complete observations, only the twelve requested predictors, and one fixed training/test split.</label>
+
+## 2. Build and visualise a CART regression tree {#cart}
+
+A **regression tree** repeatedly separates observations into groups with more similar response values. Each final group, or **leaf**, predicts its training mean. The fitted tree can represent different patterns in different factor backgrounds.
+
+Because `train_data` contains only the response and twelve indicators, `Decom ~ .` means “predict Decom using all other columns.” The dot would be unsafe if unrelated columns were still present.
+
+```{r fit-cart}
+tree_model <- rpart(
+  Decom ~ .,
+  data = train_data,
+  method = "anova",
+  control = rpart.control(maxdepth = 3, minbucket = 10, cp = 0.01, xval = 0)
+)
+print(tree_model)
+```
+
+`method = "anova"` selects squared-error regression splitting; this is not the group-comparison ANOVA exercise from Day 4. We pre-set a maximum depth of three and at least ten training observations per leaf to keep the diagram manageable. `cp` limits small improvements. Internal cross-validation is off (`xval = 0`) for this first illustration; Step 3 introduces CV using the full prepared dataset.
+
+```{r plot-cart}
+rpart.plot(tree_model, type = 2, extra = 1, yesno = 2, fallen.leaves = TRUE,
+           digits = 3, roundint = FALSE, box.palette = "GnBu",
+           main = "CART: predicted litter mass loss")
+```
+
+Enlarge the RStudio Plots pane or select **Zoom**. The diagram shows a fitted mean and an observation count in each node. Read the written condition and its yes/no branch labels. With numeric 0/1 predictors, a boundary of **0.5 separates absence from presence**; it is not an ecological dose threshold.
+
+**Your task:** identify the first split, count the leaves, and find the leaf with the lowest predicted decomposition. Which factor conditions lead there?
+
+<details class="answer"><summary>Check: reference tree</summary>
+
+```{r reference-tree, echo=FALSE, purl=FALSE, fig.show='asis', fig.width=9, fig.height=5.5, fig.alt='Regression tree with salinity at the first split, drought on both branches, and a lithium split within the no-salinity, drought-present branch.'}
+rpart.plot(tree_model, type = 2, extra = 1, yesno = 2, fallen.leaves = TRUE,
+           digits = 3, roundint = FALSE, box.palette = "GnBu",
+           main = "CART: predicted litter mass loss")
+```
+
+With the supplied data and seed, **salinity (`S`)** is the first split and the tree has **five leaves**. Its lowest predicted mass loss is about **0.558**, or **55.8%**, for salinity present and drought present. Follow the displayed conditions: the location of a branch on the page alone does not tell you whether a factor is present.
+
+</details>
+
+### Check predictions on the test set
+
+Use the 63 observations test set aside earlier to calculate prediction error for this first tree. Multiplying the root mean squared error (RMSE) by 100 expresses it in percentage points of litter mass loss.
+
+```{r first-cart-test}
+first_cart_pred <- predict(tree_model, newdata = test_data[, factor_names])
+first_cart_rmse <- sqrt(mean((test_data$Decom - first_cart_pred)^2))
+100 * first_cart_rmse
+```
+
+The reference RMSE is about **3.62%**.
+
+<label class="step-check"><input type="checkbox" data-step="cart"> I fitted the illustrative tree, followed a 0/1 split and checked its held-out prediction error.</label>
+
+## 3. Repeat CART with cross-validation {#interpret}
+
+### A short explanation: cross-validation
+
+**k-fold cross-validation (CV)** divides the full prepared dataset into `k` groups, called folds. Fit a model using `k-1` folds and predict the remaining fold; repeat until each fold has been left out once. Every observation is used for fitting in `k-1` rounds and for validation in one round.
+
+### Task A · Switch on five-fold cross-validation
+
+Assign every observation to one of five folds. Passing these fold IDs to `xval` requests five-fold CV.
+
+```{r fit-cart-cv}
+set.seed(505)
+cv_folds <- sample(rep(1:5, length.out = nrow(model_data)))
+table(cv_folds)
+tree_cv <- rpart(
+  Decom ~ .,
+  data = model_data,
+  method = "anova",
+  control = rpart.control(maxdepth = 3, minbucket = 10, cp = 0.01, xval = cv_folds)
+)
+printcp(tree_cv)
+print(tree_cv)
+```
+
+Read the complexity-parameter table before choosing a size:
+
+| Column | How to read it |
+|:---|:---|
+| `CP` | Complexity parameter defining a candidate pruned tree |
+| `nsplit` | Number of splits; a tree has one more leaf than splits |
+| `rel error` | Relative training error |
+| `xerror` | Relative cross-validation error; smaller is better |
+| `xstd` | Estimated standard error of the CV error; not a p-value |
+
+**Discuss:** Does the row with the smallest training error also have the smallest CV error? Why might keeping an extra split reduce training error without improving predictions for held-out observations? `xerror` is on a relative error scale, not an RMSE scale.
+
+### Task B · Select and plot the pruned tree
+
+For this exercise, select the row with the smallest `xerror`, extract its `CP`, and prune the fitted tree. `which.min()` returns the position of the smallest value.
+
+```{r prune-cart-cv}
+best_row <- which.min(tree_cv$cptable[, "xerror"])
+best_cp <- tree_cv$cptable[best_row, "CP"]
+best_cp
+tree_cv_pruned <- prune(tree_cv, cp = best_cp)
+print(tree_cv_pruned)
+
+rpart.plot(tree_cv_pruned, type = 2, extra = 1, yesno = 2, fallen.leaves = TRUE,
+           digits = 3, roundint = FALSE, box.palette = "GnBu",
+           main = "CART: tree size selected by five-fold CV")
+```
+
+This pruned tree uses all **252 observations** for its final leaf means. CV was used to choose its size. `tree_model` remains the first illustration; from now on, interpret and save **`tree_cv_pruned`** as the CART model.
+
+Keep the predictions made when each observation was in a held-out fold. `xpred.rpart()` returns one column for each candidate size; `best_row` selects the size chosen above.
+
+```{r cart-cv-predictions}
+cart_cv_pred <- xpred.rpart(tree_cv, xval = cv_folds)[, best_row]
+```
+
+### Task C · Compare the two trees
+
+1. Record the selected `CP`, the number of splits and the number of leaves. Which splits from Step 2 remain?
+2. Does drought still appear within the salinity-present branch? What happens to the lithium split?
+3. Explain why the minimum CV error does not guarantee the lowest error on every future sample.
+
+<details class="answer"><summary>Check: selected tree and interpretation</summary>
+
+```{r reference-cv-tree, echo=FALSE, purl=FALSE, fig.show='asis', fig.width=9, fig.height=4.5, fig.alt='Pruned CART regression tree selected using five-fold cross-validation across all 252 prepared observations.'}
+rpart.plot(tree_cv_pruned, type = 2, extra = 1, yesno = 2, fallen.leaves = TRUE,
+           digits = 3, roundint = FALSE, box.palette = "GnBu",
+           main = "CART: tree size selected by five-fold CV")
+```
+
+With the supplied seed, the smallest `xerror` is approximately **0.519**, at **CP = 0.0176**, with **two splits and three leaves**. The five-leaf candidate fitted to the full dataset has lower training error, but a slightly higher CV error of about **0.524**. Its additional splits are removed by the CV-based choice. These CV differences are small.
+
+The three paths predict approximately **56.0%** mass loss for S = 1 and D = 1 (n = 30), **64.1%** for S = 1 and D = 0 (n = 40), and **66.3%** for S = 0 (n = 182).
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="interpret"> I used all 252 observations for five-fold CART Cross Validation, pruned using xerror and kept the held-out-fold predictions.</label>
+
+**Break · 5 minutes.** Save your script. Leave your data and fitted tree available for the next step.
+
+## 4. Guided practice: fit a small random forest {#forest}
+
+One tree gives readable paths but can change substantially when the fitting sample changes. A random forest averages predictions from multiple trees, using resampled observations and random subsets of predictors at each split. Fit this forest using **all 252 observations in `model_data`** and the same twelve predictors.
+
+### Task A · Complete the two settings
+
+Copy the template, replace the blanks, and explain each setting to your partner. Use **25 trees** and **50 permutations** for less heavy computation. Do not run the template with blanks.
+
+```{r forest-template, eval=FALSE, purl=FALSE}
+set.seed(505)
+rf_model <- randomForest(
+  x = model_data[, factor_names],
+  y = model_data$Decom,
+  ntree = ___,
+  mtry = 4,
+  nodesize = 5,
+  importance = TRUE,
+  nPerm = ___
+)
+```
+
+- `x` is the twelve-column 0/1 predictor matrix; `y` is the numeric decomposition response.
+- `ntree` controls the number of trees. Keep it at **25 or fewer** in this practical.
+- `mtry = 4` makes four randomly selected predictors available at each split. The model still receives all twelve factors.
+- `nodesize = 5` limits how small terminal groups can become during tree growing.
+- `importance = TRUE` requests importance calculations.
+- `nPerm = 50` repeats predictor shuffling on out-of-bag observations for importance within each tree. It does not mean 50 forest refits or a significance test.
+
+<details class="answer"><summary>Check and run: completed random forest</summary>
+
+```{r fit-forest}
+set.seed(505)
+rf_model <- randomForest(
+  x = model_data[, factor_names],
+  y = model_data$Decom,
+  ntree = 25,
+  mtry = 4,
+  nodesize = 5,
+  importance = TRUE,
+  nPerm = 50
+)
+print(rf_model)
+```
+
+The printed model should say **regression**, **25 trees**, and **4 variables tried at each split**. It uses all 252 observations. The response must stay numeric.
+
+</details>
+
+### Task B · What does out-of-bag mean?
+
+For each tree, some observations are omitted from its bootstrap sample. Those are that tree's **out-of-bag (OOB)** observations.
+```{r forest-oob-error}
+rf_oob_rmse <- sqrt(tail(rf_model$mse, 1))
+100 * rf_oob_rmse
+```
+
+Explain: Why would evaluating only on the observations used to build a tree make its predictions look too good?
+
+<details class="answer"><summary>Check: error and computation</summary>
+
+A tree has already used its fitting responses to choose splits, so training error can be optimistic. OOB observations provide an internal check. The reference forest OOB RMSE is about **3.77 percentage points**. With only 25 trees, predictions, OOB error and rankings can vary. Fifty importance shuffles do not compensate for a small forest. This is a lightweight classroom model, and a forest is not guaranteed to outperform CART.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="forest"> I fitted a 25-tree regression forest with 50 importance permutations and can explain OOB observations.</label>
+
+## 5. Sort the factors by permutation importance {#importance}
+
+If shuffling a factor's 0/1 values makes OOB prediction worse, that means the model used information from that factor. A larger increase in error means greater **predictive importance in this fitted forest**.
+
+Extract the unscaled permutation measure, then put it into a table:
+
+```{r extract-importance}
+perm_importance <- importance(rf_model, type = 1, scale = FALSE)
+importance_table <- data.frame(
+  factor = rownames(perm_importance),
+  delta_mse = as.numeric(perm_importance[, 1]),
+  row.names = NULL
+)
+```
+
+`type = 1` selects permutation importance. `scale = FALSE` retains the change in mean squared error (MSE), measured in squared mass-loss proportions. We call the column `delta_mse` to describe this scale. It is **not a percent increase**, despite the package's default column label, and it is not a p-value.
+
+### Your turn · Sort largest first
+
+Write a command to sort the table from the highest to the lowest `delta_mse`. Hint: `order(-importance_table$delta_mse)` gives row positions in descending order. Use those positions before the comma in `importance_table[rows, ]`.
+
+<details class="answer"><summary>Check: descending importance table</summary>
+
+```{r sort-importance}
+importance_table <- importance_table[order(-importance_table$delta_mse), ]
+print(importance_table, row.names = FALSE)
+```
+
+For the supplied seed and software, salinity (`S`) and drought (`D`) rank first and second; lithium (`L`) ranks third in this full-data forest. Close or low ranks can change. Compare your actual output before copying a conclusion.
+
+</details>
+
+### Visualise all twelve ranks
+
+This plot reverses the sorted rows so that the **highest importance appears at the top**. A zero line helps identify factors whose importance is near zero or negative.
+
+```{r plot-importance}
+par(mar = c(5, 5, 3, 1))
+barplot(rev(importance_table$delta_mse),
+        names.arg = rev(importance_table$factor),
+        horiz = TRUE, las = 1, col = "#39745b", border = NA,
+        xlab = "Increase in OOB MSE (proportion squared)",
+        main = "Random forest: permutation importance")
+abline(v = 0, col = "grey40", lty = 2)
+```
+
+<details class="answer"><summary>Check: reference ranking plot</summary>
+
+```{r reference-importance, echo=FALSE, purl=FALSE, fig.show='asis', fig.width=8, fig.height=5, fig.alt='All twelve factors ranked by unscaled OOB permutation importance, with salinity and drought at the top and a vertical zero line.'}
+par(mar = c(5, 5, 3, 1))
+barplot(rev(importance_table$delta_mse),
+        names.arg = rev(importance_table$factor),
+        horiz = TRUE, las = 1, col = "#39745b", border = NA,
+        xlab = "Increase in OOB MSE (proportion squared)",
+        main = "Random forest: permutation importance")
+abline(v = 0, col = "grey40", lty = 2)
+```
+
+</details>
+
+**Write three short answers:**
+
+1. Name the top three factors, using full ecological names as well as their codes.
+2. Does high positive importance tell you that a factor increases decomposition?
+
+<details class="answer"><summary>Check: what importance can tell us</summary>
+
+High importance indicates a contribution to prediction, **not an effect direction or effect size**. A factor can be important because it predicts lower values, higher values or different patterns in different backgrounds. Read the tree for specific conditional predictions.
+
+</details>
+
+<label class="step-check"><input type="checkbox" data-step="importance"> I sorted all twelve factors and explained why predictive importance does not give effect direction.</label>
+
+## Help and references {#help}
+
+<details><summary>My file or package cannot be found</summary>
+
+Extract the student ZIP before opening `ABV_Day5.Rproj`. Keep the CSV beside the script. `file.exists("MultiFactor_data.csv")` should return `TRUE`. Install a missing package once, then run its `library()` command. You do not need an absolute file path or someone else's working directory. If `train_data` or `rf_model` cannot be found, run the preceding steps in order after restarting R.
+
+</details>
+
+<details><summary>My tree or ranking differs</summary>
+
+Check the 252 complete observations, exact factor list, seed 505 and model settings. The 189/63 split applies only to the first CART illustration. From Step 3 onward, use `model_data` and the shared `cv_folds`, not `train_data`. R or package versions can also affect results. Do not force the tree to match the example; interpret the tree you fitted. Use `sessionInfo()` to record your software when troubleshooting.
+
+</details>
+
+<details><summary>What is intentionally kept small?</summary>
+
+The full-data forest uses 25 trees, 50 OOB importance permutations and one fixed `mtry`. CART candidates stay shallow. There is no grid search, response-permutation significance test or nested cross-validation. Formal interaction testing and validation for new combinations are separate analyses. Students who finish early can discuss how they would hold out whole combinations, without running another model.
+
+</details>
+
+After attempting the tasks, download the [complete reference R script](Day5_complete.R). Instructors can download the [editable tutorial source ZIP](Day5_tutorial_source.zip) or the [R Markdown source](D5_tree_models_v2.Rmd).
+
+Research context: Bi et al. (2024), [*Number and dissimilarity of global change factors influences soil properties and functions*](https://doi.org/10.1038/s41467-024-52511-2). This teaching workflow uses the supplied course CSV and simplifies the research analysis.
+
+Method references: official CRAN manuals for [rpart](https://cran.r-project.org/web/packages/rpart/rpart.pdf), [rpart.plot](https://cran.r-project.org/web/packages/rpart.plot/rpart.plot.pdf) and [randomForest](https://cran.r-project.org/web/packages/randomForest/randomForest.pdf). The randomForest manual documents `nPerm`, OOB permutation importance and the `scale` option.
+
+<p class="small-note">Progress checkboxes are stored only in your browser. They do not submit work. Follow your instructor's submission instructions.</p>
