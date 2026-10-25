@@ -21,7 +21,3 @@ Guided tutorials for biology and ecology bachelor students, developed for **Smar
 4. Open the supplied project file, such as `ABV_Day1.Rproj`, in RStudio.
 5. Open the starter script and save your own copy as `Day1_yourname.R`, changing the day number as appropriate.
 6. Follow the tutorial in your browser and run the commands from your script in RStudio.
-
-**Day 5 packages:** install `rpart`, `rpart.plot` and `randomForest` before class with `install.packages(c("rpart", "rpart.plot", "randomForest"))`.
-
-**Day 7 setup:** open the linked HTML tutorial and follow its setup instructions in RStudio. Use the course dataset, `MultiFactor_data.csv`, from an earlier day’s student files or the [Day 5 dataset download](https://mohanb96.github.io/Ecological-data-analysis-with-R/day5_v2/MultiFactor_data.csv).
