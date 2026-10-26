@@ -1,5 +1,5 @@
 ---
-title: "Day 5: Read a tree, rank the factors"
+title: "Day 5: CART model and Random Forest model"
 author: "Mohan Bi"
 lang: en
 description: "A two-hour ecology practical: predict soil litter decomposition from twelve 0/1 global change factors with CART, interpret conditional branches, then fit a small random forest and rank permutation importance."
